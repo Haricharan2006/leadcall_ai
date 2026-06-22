@@ -15,6 +15,7 @@ class Settings:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
     WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "my_super_secret_123")
+    DEMO_MODE = os.getenv("DEMO_MODE", "false")
 
 
 settings = Settings()
