@@ -3,12 +3,14 @@ from datetime import datetime
 from uuid import uuid4
 from bson import ObjectId
 
+from app.core.config import settings
 from app.database.mongodb import (
     companies_collection,
     leads_collection,
     campaigns_collection
 )
 from app.services.vapi_service import start_outbound_call
+from app.agent.graph import lead_evaluation_graph
 
 router = APIRouter(prefix="/api/campaigns", tags=["Campaigns"])
 
@@ -27,6 +29,20 @@ def convert_objectid(data):
         return new_data
 
     return data
+
+
+def is_demo_mode():
+    return str(settings.DEMO_MODE).lower() == "true"
+
+
+def build_demo_transcript(company, lead):
+    return (
+        f"Hello, this is {lead.get('name')}. "
+        "I am interested in buying a house. "
+        "My budget is 50 lakhs. "
+        "I prefer Vijayawada location. "
+        "I want to buy within 3 months."
+    )
 
 
 @router.post("/start/{company_id}")
@@ -51,6 +67,7 @@ def start_campaign(company_id: str, request: Request):
         return {
             "message": "No pending leads found",
             "company_id": company_id,
+            "demo_mode": is_demo_mode(),
             "total_pending_leads": 0,
             "results": []
         }
@@ -62,6 +79,7 @@ def start_campaign(company_id: str, request: Request):
         "campaign_id": campaign_id,
         "company_id": company_id,
         "status": "RUNNING",
+        "mode": "DEMO" if is_demo_mode() else "VAPI",
         "total_leads": len(pending_leads),
         "calls_started": 0,
         "calls_failed": 0,
@@ -78,40 +96,77 @@ def start_campaign(company_id: str, request: Request):
 
     for lead in pending_leads:
         try:
-            vapi_response = start_outbound_call(
-                company=company,
-                lead=lead,
-                webhook_url=webhook_url
-            )
+            if is_demo_mode():
+                demo_transcript = build_demo_transcript(company, lead)
 
-            vapi_call_id = vapi_response.get("id")
-
-            leads_collection.update_one(
-                {
+                result = lead_evaluation_graph.invoke({
                     "lead_id": lead["lead_id"],
-                    "company_id": company_id
-                },
-                {
-                    "$set": {
-                        "status": "CALL_INITIATED",
-                        "last_call_id": vapi_call_id,
-                        "last_campaign_id": campaign_id,
-                        "updated_at": datetime.utcnow().isoformat()
+                    "company_id": company_id,
+                    "transcript": demo_transcript
+                })
+
+                leads_collection.update_one(
+                    {
+                        "lead_id": lead["lead_id"],
+                        "company_id": company_id
                     },
-                    "$inc": {
-                        "attempt_count": 1
+                    {
+                        "$set": {
+                            "last_campaign_id": campaign_id,
+                            "updated_at": datetime.utcnow().isoformat()
+                        },
+                        "$inc": {
+                            "attempt_count": 1
+                        }
                     }
-                }
-            )
+                )
 
-            calls_started += 1
+                calls_started += 1
 
-            results.append({
-                "lead_id": lead["lead_id"],
-                "name": lead["name"],
-                "status": "CALL_INITIATED",
-                "vapi_call_id": vapi_call_id
-            })
+                results.append({
+                    "lead_id": lead["lead_id"],
+                    "name": lead["name"],
+                    "mode": "DEMO",
+                    "status": result.get("status"),
+                    "confidence": result.get("confidence"),
+                    "message": "Demo transcript processed by LangGraph"
+                })
+
+            else:
+                vapi_response = start_outbound_call(
+                    company=company,
+                    lead=lead,
+                    webhook_url=webhook_url
+                )
+
+                vapi_call_id = vapi_response.get("id")
+
+                leads_collection.update_one(
+                    {
+                        "lead_id": lead["lead_id"],
+                        "company_id": company_id
+                    },
+                    {
+                        "$set": {
+                            "status": "CALL_INITIATED",
+                            "last_call_id": vapi_call_id,
+                            "last_campaign_id": campaign_id,
+                            "updated_at": datetime.utcnow().isoformat()
+                        },
+                        "$inc": {
+                            "attempt_count": 1
+                        }
+                    }
+                )
+
+                calls_started += 1
+
+                results.append({
+                    "lead_id": lead["lead_id"],
+                    "name": lead["name"],
+                    "status": "CALL_INITIATED",
+                    "vapi_call_id": vapi_call_id
+                })
 
         except Exception as e:
             leads_collection.update_one(
@@ -159,6 +214,7 @@ def start_campaign(company_id: str, request: Request):
         "message": "Campaign processed",
         "campaign_id": campaign_id,
         "company_id": company_id,
+        "demo_mode": is_demo_mode(),
         "total_leads": len(pending_leads),
         "calls_started": calls_started,
         "calls_failed": calls_failed,
