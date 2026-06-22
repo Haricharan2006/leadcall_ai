@@ -36,13 +36,56 @@ def is_demo_mode():
 
 
 def build_demo_transcript(company, lead):
-    return (
-        f"Hello, this is {lead.get('name')}. "
-        "I am interested in buying a house. "
-        "My budget is 50 lakhs. "
-        "I prefer Vijayawada location. "
-        "I want to buy within 3 months."
-    )
+    name = lead.get("name", "").lower()
+    company_id = lead.get("company_id", "")
+
+    if "ravi" in name:
+        return (
+            f"Hello, this is {lead.get('name')}. "
+            "I am interested in buying a house. "
+            "My budget is 50 lakhs. "
+            "I prefer Vijayawada location. "
+            "I want to buy within 3 months."
+        )
+
+    elif "kiran" in name:
+        return (
+            f"Hello, this is {lead.get('name')}. "
+            "I am busy right now. Please call later in the evening."
+        )
+
+    elif "hari" in name or "haricharan" in name:
+        return (
+            f"Hello, this is {lead.get('name')}. "
+            "I am not interested in buying property now. Thank you."
+        )
+
+    elif "sita" in name:
+        return (
+            f"Hello, this is {lead.get('name')}. "
+            "I am interested in renting an apartment. "
+            "My monthly budget is 15000 rupees. "
+            "I prefer Guntur location. "
+            "I want to move in next month."
+        )
+
+    elif "arjun" in name:
+        return (
+            f"Hello, this is {lead.get('name')}. "
+            "I am busy now. Please call later tomorrow morning."
+        )
+
+    elif "manikanta" in name:
+        return (
+            f"Hello, this is {lead.get('name')}. "
+            "I need more details. I cannot decide now."
+        )
+
+    else:
+        return (
+            f"Hello, this is {lead.get('name')}. "
+            "I am not interested at this time. Thank you."
+        )
 
 
 @router.post("/start/{company_id}")
